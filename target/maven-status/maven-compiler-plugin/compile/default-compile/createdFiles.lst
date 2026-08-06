@@ -1,0 +1,3 @@
+com\example\babymonitor\controller\BabyMonitorController.class
+com\example\babymonitor\BabyMonitorApplication.class
+com\example\babymonitor\config\CorsConfig.class
