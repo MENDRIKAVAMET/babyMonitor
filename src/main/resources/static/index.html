@@ -81,13 +81,13 @@
     </style>
 </head>
 <body>
-    <h1>👶 BabyMonitor</h1>
+    <h1>BabyMonitor</h1>
     <p class="subtitle">Surveillance a distance de l'ecran du telephone</p>
 
     <div class="controls">
-        <button class="btn-start" onclick="setCapture(true)">▶ Demarrer la capture</button>
-        <button class="btn-stop" onclick="setCapture(false)">⏹ Arreter</button>
-        <button class="btn-refresh" onclick="refreshImages()">🔄 Rafraichir</button>
+        <button class="btn-start" onclick="setCapture(true)">Demarrer la capture</button>
+        <button class="btn-stop" onclick="setCapture(false)">Arreter</button>
+        <button class="btn-refresh" onclick="refreshImages()">Rafraichir</button>
     </div>
 
     <div id="status" class="inactive">Statut : EN ATTENTE</div>
@@ -146,10 +146,10 @@
             }
         }
 
-        // Rafraichissement auto toutes les 8 secondes
         setInterval(refreshImages, 8000);
+        checkStatus();
+        refreshImages();
 
-        // Verifie le statut au chargement
         async function checkStatus() {
             try {
                 const res = await fetch(`${API}/command`);
@@ -157,9 +157,6 @@
                 updateStatus(data.capture);
             } catch (e) {}
         }
-
-        checkStatus();
-        refreshImages();
     </script>
 </body>
 </html>

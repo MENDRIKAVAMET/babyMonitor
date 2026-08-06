@@ -44,7 +44,7 @@ public class BabyMonitorController {
             String filename = "screen_" + System.currentTimeMillis() + ".jpg";
             Path target = uploadDir.resolve(filename);
             Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
-            System.out.println("📸 Image recue : " + filename + " (" + file.getSize() + " octets)");
+            System.out.println("Image recue : " + filename + " (" + file.getSize() + " octets)");
             return ResponseEntity.ok(Map.of("status", "received", "file", filename));
         } catch (IOException e) {
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
