@@ -10,7 +10,11 @@ public class CorsConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
                 .allowedOrigins("*")
-                .allowedMethods("GET", "POST")
-                .allowedHeaders("*");
+                // GET/POST : commandes, upload, listes.
+                // DELETE : le frontend supprime les photos (les boutons "Supprimer").
+                // OPTIONS : preflight CORS, obligatoire pour DELETE depuis un navigateur.
+                .allowedMethods("GET", "POST", "DELETE", "OPTIONS")
+                .allowedHeaders("*")
+                .maxAge(3600);
     }
 }
