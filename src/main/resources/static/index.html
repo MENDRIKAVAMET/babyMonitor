@@ -15,6 +15,22 @@
         }
         h1 { text-align: center; margin-bottom: 10px; color: #fff; }
         .subtitle { text-align: center; color: #888; margin-bottom: 30px; }
+        .toolbar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        select {
+            padding: 12px 16px;
+            font-size: 15px;
+            border-radius: 10px;
+            border: 1px solid #333;
+            background: #1a1a2e;
+            color: #e0e0e0;
+        }
         .controls {
             display: flex;
             justify-content: center;
@@ -36,6 +52,7 @@
         .btn-start { background: #22c55e; color: #fff; }
         .btn-stop { background: #ef4444; color: #fff; }
         .btn-refresh { background: #3b82f6; color: #fff; }
+        .btn-delete { background: #b91c1c; color: #fff; }
         #status {
             text-align: center;
             font-size: 20px;
@@ -84,10 +101,19 @@
     <h1>BabyMonitor</h1>
     <p class="subtitle">Surveillance a distance de l'ecran du telephone</p>
 
+    <div class="toolbar">
+        <label for="deviceSelect" style="color:#888;">Appareil :</label>
+        <select id="deviceSelect" onchange="onDeviceChange()">
+            <option value="">-- Choisir un appareil --</option>
+        </select>
+    </div>
+
     <div class="controls">
         <button class="btn-start" onclick="setCapture(true)">Demarrer la capture</button>
         <button class="btn-stop" onclick="setCapture(false)">Arreter</button>
-        <button class="btn-refresh" onclick="refreshImages()">Rafraichir</button>
+        <button class="btn-refresh" onclick="refreshAll()">Rafraichir</button>
+        <button class="btn-delete" onclick="deleteCurrentDevice()">Supprimer photos (cet appareil)</button>
+        <button class="btn-delete" onclick="deleteAllDevices()">Supprimer TOUTES les photos</button>
     </div>
 
     <div id="status" class="inactive">Statut : EN ATTENTE</div>
@@ -98,10 +124,49 @@
 
     <script>
         const API = window.location.origin + "/api";
+        let currentDevice = "";
+
+        function getSavedDevice() {
+            return localStorage.getItem("babymonitor_device") || "";
+        }
+        function saveDevice(dev) {
+            localStorage.setItem("babymonitor_device", dev);
+        }
+
+        async function loadDevices() {
+            try {
+                const res = await fetch(`${API}/devices`);
+                const devices = await res.json();
+                const select = document.getElementById('deviceSelect');
+                const previouslySelected = currentDevice || getSavedDevice();
+
+                select.innerHTML = '<option value="">-- Choisir un appareil --</option>' +
+                    devices.map(d => `<option value="${d}">${d}</option>`).join('');
+
+                if (devices.length > 0) {
+                    const toSelect = devices.includes(previouslySelected) ? previouslySelected : devices[0];
+                    select.value = toSelect;
+                    currentDevice = toSelect;
+                    saveDevice(toSelect);
+                } else {
+                    currentDevice = "";
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function onDeviceChange() {
+            currentDevice = document.getElementById('deviceSelect').value;
+            saveDevice(currentDevice);
+            checkStatus();
+            refreshImages();
+        }
 
         async function setCapture(active) {
+            if (!currentDevice) { alert("Choisis d'abord un appareil."); return; }
             try {
-                const res = await fetch(`${API}/command?active=${active}`, { method: 'POST' });
+                const res = await fetch(`${API}/command?active=${active}&device=${encodeURIComponent(currentDevice)}`, { method: 'POST' });
                 const data = await res.json();
                 updateStatus(data.capture);
             } catch (e) {
@@ -121,8 +186,12 @@
         }
 
         async function refreshImages() {
+            if (!currentDevice) {
+                document.getElementById('gallery').innerHTML = '<div class="empty">Choisis un appareil pour voir ses photos.</div>';
+                return;
+            }
             try {
-                const res = await fetch(`${API}/images`);
+                const res = await fetch(`${API}/images?device=${encodeURIComponent(currentDevice)}`);
                 const files = await res.json();
                 const gallery = document.getElementById('gallery');
 
@@ -136,7 +205,7 @@
                     const timeStr = date.toLocaleTimeString('fr-FR');
                     return `
                         <div class="img-card">
-                            <img src="${API}/image/${f}" alt="capture" loading="lazy">
+                            <img src="${API}/image/${encodeURIComponent(currentDevice)}/${f}" alt="capture" loading="lazy">
                             <div class="info">Capture a ${timeStr}</div>
                         </div>
                     `;
@@ -146,17 +215,48 @@
             }
         }
 
-        setInterval(refreshImages, 8000);
-        checkStatus();
-        refreshImages();
-
         async function checkStatus() {
+            if (!currentDevice) return;
             try {
-                const res = await fetch(`${API}/command`);
+                const res = await fetch(`${API}/command?device=${encodeURIComponent(currentDevice)}`);
                 const data = await res.json();
                 updateStatus(data.capture);
             } catch (e) {}
         }
+
+        async function deleteCurrentDevice() {
+            if (!currentDevice) { alert("Choisis d'abord un appareil."); return; }
+            if (!confirm(`Supprimer toutes les photos de "${currentDevice}" ?`)) return;
+            try {
+                const res = await fetch(`${API}/images?device=${encodeURIComponent(currentDevice)}`, { method: 'DELETE' });
+                const data = await res.json();
+                alert(`${data.deleted} photo(s) supprimee(s).`);
+                refreshImages();
+            } catch (e) {
+                alert("Erreur : " + e.message);
+            }
+        }
+
+        async function deleteAllDevices() {
+            if (!confirm("Supprimer TOUTES les photos, de TOUS les appareils ?")) return;
+            try {
+                const res = await fetch(`${API}/images`, { method: 'DELETE' });
+                const data = await res.json();
+                alert(`${data.deleted} photo(s) supprimee(s) au total.`);
+                refreshImages();
+            } catch (e) {
+                alert("Erreur : " + e.message);
+            }
+        }
+
+        async function refreshAll() {
+            await loadDevices();
+            await checkStatus();
+            await refreshImages();
+        }
+
+        refreshAll();
+        setInterval(refreshAll, 8000);
     </script>
 </body>
 </html>
