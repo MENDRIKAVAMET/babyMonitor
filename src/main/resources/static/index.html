@@ -131,6 +131,15 @@
     <div class="controls">
         <button class="btn-start" onclick="setCapture(true)">Demarrer la capture</button>
         <button class="btn-stop" onclick="setCapture(false)">Arreter</button>
+        <label for="intervalSelect" style="color:#888; font-size:14px;">Frequence :</label>
+        <select id="intervalSelect" onchange="onIntervalChange()" title="Intervalle entre deux photos">
+            <option value="1">1 s</option>
+            <option value="2">2 s</option>
+            <option value="4" selected>4 s</option>
+            <option value="10">10 s</option>
+            <option value="30">30 s</option>
+            <option value="60">60 s</option>
+        </select>
         <button class="btn-refresh" onclick="refreshAll()">Rafraichir</button>
         <button class="btn-delete" onclick="deleteCurrentDevice()">Supprimer photos (cet appareil)</button>
         <button class="btn-delete" onclick="deleteAllDevices()">Supprimer TOUTES les photos</button>
@@ -212,17 +221,33 @@
             try {
                 const res = await fetch(`${API}/command?active=${active}&device=${encodeURIComponent(currentDevice)}`, { method: 'POST' });
                 const data = await res.json();
-                updateStatus(data.capture);
+                updateStatus(data.capture, data.interval);
             } catch (e) {
                 alert("Erreur serveur : " + e.message);
             }
         }
 
-        function updateStatus(active) {
+        // Change la frequence de capture pour l'appareil courant sans toucher a
+        // l'etat marche/arret (on renvoie l'etat actuel dans la requete).
+        async function onIntervalChange() {
+            if (!currentDevice) { alert("Choisis d'abord un appareil (ou saisis son ID)."); return; }
+            const interval = parseInt(document.getElementById('intervalSelect').value, 10);
+            try {
+                const res = await fetch(`${API}/command?device=${encodeURIComponent(currentDevice)}`);
+                const data = await res.json();
+                await fetch(`${API}/command?active=${data.capture}&interval=${interval}&device=${encodeURIComponent(currentDevice)}`, { method: 'POST' });
+                updateStatus(data.capture, interval);
+            } catch (e) {
+                alert("Erreur serveur : " + e.message);
+            }
+        }
+
+        function updateStatus(active, interval) {
             const el = document.getElementById('status');
             const dev = currentDevice ? ` (${currentDevice})` : "";
             if (active) {
-                el.textContent = `Statut : CAPTURE ACTIVE${dev} - Le telephone envoie des images`;
+                const freq = interval ? ` - ~1 photo / ${interval}s` : "";
+                el.textContent = `Statut : CAPTURE ACTIVE${dev}${freq}`;
                 el.className = "active";
             } else {
                 el.textContent = `Statut : EN ATTENTE${dev} - Aucune capture en cours`;
@@ -271,7 +296,12 @@
             try {
                 const res = await fetch(`${API}/command?device=${encodeURIComponent(currentDevice)}`);
                 const data = await res.json();
-                updateStatus(data.capture);
+                updateStatus(data.capture, data.interval);
+                // Le selecteur suit la frequence configuree pour cet appareil.
+                const sel = document.getElementById('intervalSelect');
+                if (data.interval && sel.value !== String(data.interval)) {
+                    sel.value = String(data.interval);
+                }
             } catch (e) {}
         }
 

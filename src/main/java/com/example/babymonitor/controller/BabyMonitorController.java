@@ -22,9 +22,17 @@ public class BabyMonitorController {
 
     private static final String DEFAULT_DEVICE = "unknown";
 
-    // Le telephone envoie 1 image/10s : avec 300 images conservees par appareil,
+    // Le telephone envoie 1 image/4s : avec 750 images conservees par appareil,
     // cela represente environ 50 minutes d'historique (surveillance en direct).
-    private static final int MAX_IMAGES_PER_DEVICE = 300;
+    private static final int MAX_IMAGES_PER_DEVICE = 750;
+
+    // Frequence de capture (en secondes) par appareil, reglable depuis la page
+    // web. Par defaut : 1 photo / 4s. Persiste dans state/intervals.json.
+    // Max 60s : cohérent avec le telephone (qui plafonne aussi a 60s) et la
+    // liste de valeurs proposee dans la page web.
+    private static final int DEFAULT_INTERVAL_SEC = 4;
+    private static final int MIN_INTERVAL_SEC = 1;
+    private static final int MAX_INTERVAL_SEC = 60;
 
     // Extrait la milliseconde de capture depuis le nom de fichier envoye par le
     // telephone (screen_<millis>.jpg).
@@ -34,6 +42,9 @@ public class BabyMonitorController {
     // Persiste dans state/commands.json pour survivre a un redemarrage de l'app.
     private final Map<String, Boolean> captureActive = new ConcurrentHashMap<>();
 
+    // Frequence de capture (en secondes) par appareil, reglee depuis la page web.
+    private final Map<String, Integer> captureIntervals = new ConcurrentHashMap<>();
+
     // Appareils enregistres (POST /api/register) : visibles dans le selecteur web
     // meme avant d'avoir envoye leur premiere image.
     private final Set<String> knownDevices = ConcurrentHashMap.newKeySet();
@@ -42,6 +53,7 @@ public class BabyMonitorController {
     private final Path stateDir = Paths.get("state");
     private final Path commandsFile = stateDir.resolve("commands.json");
     private final Path devicesFile = stateDir.resolve("devices.json");
+    private final Path intervalsFile = stateDir.resolve("intervals.json");
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @PostConstruct
@@ -72,6 +84,14 @@ public class BabyMonitorController {
                     System.out.println("Appareils recharges : " + saved);
                 }
             }
+            if (Files.exists(intervalsFile)) {
+                Map<String, Integer> saved = objectMapper.readValue(
+                        intervalsFile.toFile(), new TypeReference<Map<String, Integer>>() {});
+                if (saved != null) {
+                    captureIntervals.putAll(saved);
+                    System.out.println("Intervalles recharges : " + saved);
+                }
+            }
         } catch (IOException e) {
             System.out.println("Etat persiste illisible, on repart de zero : " + e.getMessage());
         }
@@ -92,6 +112,15 @@ public class BabyMonitorController {
             objectMapper.writeValue(devicesFile.toFile(), new ArrayList<>(knownDevices));
         } catch (IOException e) {
             System.out.println("Impossible de persister la liste des appareils : " + e.getMessage());
+        }
+    }
+
+    private void persistIntervals() {
+        try {
+            Files.createDirectories(stateDir);
+            objectMapper.writeValue(intervalsFile.toFile(), captureIntervals);
+        } catch (IOException e) {
+            System.out.println("Impossible de persister les intervalles : " + e.getMessage());
         }
     }
 
@@ -136,18 +165,30 @@ public class BabyMonitorController {
 
     @PostMapping("/command")
     public ResponseEntity<?> setCommand(@RequestParam boolean active,
-                                         @RequestParam(defaultValue = DEFAULT_DEVICE) String device) {
+                                         @RequestParam(defaultValue = DEFAULT_DEVICE) String device,
+                                         @RequestParam(required = false) Integer interval) {
         String dev = sanitizeDevice(device);
         captureActive.put(dev, active);
+        if (interval != null) {
+            int clamped = Math.max(MIN_INTERVAL_SEC, Math.min(MAX_INTERVAL_SEC, interval));
+            captureIntervals.put(dev, clamped);
+            persistIntervals();
+        }
         persistCommands();
-        System.out.println("[COMMANDE] " + dev + " -> " + (active ? "CAPTURE ACTIVE" : "EN ATTENTE"));
-        return ResponseEntity.ok(Map.of("status", "ok", "capture", active, "device", dev));
+        int currentInterval = captureIntervals.getOrDefault(dev, DEFAULT_INTERVAL_SEC);
+        System.out.println("[COMMANDE] " + dev + " -> " + (active ? "CAPTURE ACTIVE" : "EN ATTENTE")
+                + " (intervalle " + currentInterval + "s)");
+        return ResponseEntity.ok(Map.of("status", "ok", "capture", active,
+                "interval", currentInterval, "device", dev));
     }
 
     @GetMapping("/command")
     public ResponseEntity<?> getCommand(@RequestParam(defaultValue = DEFAULT_DEVICE) String device) {
         String dev = sanitizeDevice(device);
-        return ResponseEntity.ok(Map.of("capture", captureActive.getOrDefault(dev, false), "device", dev));
+        return ResponseEntity.ok(Map.of(
+                "capture", captureActive.getOrDefault(dev, false),
+                "interval", captureIntervals.getOrDefault(dev, DEFAULT_INTERVAL_SEC),
+                "device", dev));
     }
 
     // ---- Upload d'une ou plusieurs captures d'ecran ----
